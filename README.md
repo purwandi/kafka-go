@@ -5,15 +5,22 @@ This repository contains standalone Go modules for SASL authentication with
 
 ## Add a module to your project
 
-Run `go get` from the directory of your Go project. For Kerberos:
+Run `go get` from the directory of your Go project. For example, for Kerberos:
 
 ```bash
 go get github.com/purwandi/kafka-go/kerberos@latest
 ```
 
+For OAuth 2.0 client-credentials authentication:
+
+```bash
+go get github.com/purwandi/kafka-go/oauth@latest
+```
+
 This adds the module to your project's dependencies. For configuration and
-usage examples, see the [Kerberos package README](./kerberos/README.md).
+usage examples, see the package READMEs.
 
 Modules in this repository:
 
 - [Kerberos (GSSAPI)](./kerberos/README.md)
+- [OAuth 2.0 (OAUTHBEARER)](./oauth/README.md)
