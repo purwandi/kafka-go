@@ -2,128 +2,61 @@
 
 Kerberos (GSSAPI) SASL authentication for
 [`kafka-go`](https://github.com/segmentio/kafka-go). Use it as the
-`SASLMechanism` of a `kafka.Dialer` (readers, low-level connections) or as the
-`SASL` mechanism of a `kafka.Transport` (writers) when connecting to a broker
-configured with `GSSAPI`.
+`SASLMechanism` of a `kafka.Dialer` (readers and low-level connections) or as
+the `SASL` mechanism of a `kafka.Transport` (writers).
 
-```bash
-go get github.com/segmentio/kafka-go/sasl/kerberos
-```
+## Configure a reader
 
-## Quick start
+Configure the broker principal as `kafka/<broker-host>@<REALM>`, and ensure
+the application can read `krb5.conf` and reach the KDC.
 
 ```go
-mechanism := &kerberos.Mechanism{
-	Config: kerberos.Config{
-		AuthType:           kerberos.KRB5_USER_AUTH,
-		KerberosConfigPath: "/etc/krb5.conf",
-		ServiceName:        "kafka",
-		Username:           "alice",
-		Password:           "s3cret",
-		Realm:              "EXAMPLE.COM",
-	},
-}
+package main
 
-dialer := &kafka.Dialer{
-	Timeout:       10 * time.Second,
-	DualStack:     true,
-	SASLMechanism: mechanism,
-	TLS:           &tls.Config{}, // GSSAPI does not encrypt traffic; enable TLS.
-}
+import (
+	"crypto/tls"
+	"time"
 
-reader := kafka.NewReader(kafka.ReaderConfig{
-	Brokers: []string{"broker1.example.com:9093"},
-	GroupID: "consumer-group",
-	Topic:   "events",
-	Dialer:  dialer,
-})
-```
+	"github.com/purwandi/kafka-go/kerberos"
+	"github.com/segmentio/kafka-go"
+)
 
-For writers, pass the mechanism through a `kafka.Transport`:
+func main() {
+	mechanism := &kerberos.Mechanism{
+		Config: kerberos.Config{
+			AuthType:           kerberos.KRB5_USER_AUTH,
+			KerberosConfigPath: "/etc/krb5.conf",
+			ServiceName:        "kafka",
+			Username:           "alice",
+			Password:           "read-from-a-secret-store",
+			Realm:              "EXAMPLE.COM",
+		},
+	}
 
-```go
-writer := &kafka.Writer{
-	Addr:  kafka.TCP("broker1.example.com:9093"),
-	Topic: "events",
-	Transport: &kafka.Transport{
-		SASL: mechanism,
-		TLS:  &tls.Config{},
-	},
+	reader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers: []string{"broker1.example.com:9093"},
+		GroupID: "consumer-group",
+		Topic:   "events",
+		Dialer: &kafka.Dialer{
+			Timeout:       10 * time.Second,
+			DualStack:     true,
+			SASLMechanism: mechanism,
+			TLS:           &tls.Config{},
+		},
+	})
+	defer reader.Close()
 }
 ```
 
-## Authentication types
+Kerberos authenticates the connection but does not encrypt Kafka traffic. Use
+TLS when traffic encryption is required. Read credentials from an environment
+variable or secret store rather than hard-coding them.
 
-`Config.AuthType` selects where the client obtains its Kerberos credentials.
-All types require `KerberosConfigPath` (path to `krb5.conf`) and `ServiceName`
-(usually `kafka`, matching the broker's principal prefix).
+## Configure a writer
 
-### `KRB5_USER_AUTH` — username + password
-
-Credentials are obtained from the KDC using a password. Requires `Username`,
-`Password` and `Realm`.
+Pass the mechanism through a `kafka.Transport`:
 
 ```go
-mechanism := &kerberos.Mechanism{
-	Config: kerberos.Config{
-		AuthType:           kerberos.KRB5_USER_AUTH,
-		KerberosConfigPath: "/etc/krb5.conf",
-		ServiceName:        "kafka",
-		Username:           "alice",
-		Password:           "s3cret",
-		Realm:              "EXAMPLE.COM",
-	},
-}
-
-dialer := &kafka.Dialer{
-	Timeout:       10 * time.Second,
-	DualStack:     true,
-	SASLMechanism: mechanism,
-	TLS:           &tls.Config{},
-}
-
-conn, err := dialer.DialContext(ctx, "tcp", "broker1.example.com:9093")
-if err != nil {
-	// handle error
-}
-defer conn.Close()
-```
-
-Prefer reading secrets from the environment or a secret store instead of
-hard-coding:
-
-```go
-mechanism := &kerberos.Mechanism{
-	Config: kerberos.Config{
-		AuthType:           kerberos.KRB5_USER_AUTH,
-		KerberosConfigPath: os.Getenv("KRB5_CONFIG"), // e.g. /etc/krb5.conf
-		ServiceName:        "kafka",
-		Username:           os.Getenv("KRB5_USERNAME"),
-		Password:           os.Getenv("KRB5_PASSWORD"),
-		Realm:              os.Getenv("KRB5_REALM"), // e.g. EXAMPLE.COM
-	},
-}
-```
-
-### `KRB5_KEYTAB_AUTH` — keytab file
-
-Credentials are obtained from a keytab file. Preferred for long-running
-services: no password stored in the configuration. Requires `KeyTabPath`,
-`Username` and `Realm`. There is no password field; the key in the keytab acts
-as the credential.
-
-```go
-mechanism := &kerberos.Mechanism{
-	Config: kerberos.Config{
-		AuthType:           kerberos.KRB5_KEYTAB_AUTH,
-		KerberosConfigPath: "/etc/krb5.conf",
-		KeyTabPath:         "/opt/myapp/myapp.keytab",
-		ServiceName:        "kafka",
-		Username:           "myapp",
-		Realm:              "EXAMPLE.COM",
-	},
-}
-
 writer := &kafka.Writer{
 	Addr:     kafka.TCP("broker1.example.com:9093"),
 	Topic:    "events",
@@ -134,88 +67,71 @@ writer := &kafka.Writer{
 	},
 }
 defer writer.Close()
+```
 
-err := writer.WriteMessages(ctx, kafka.Message{Value: []byte("hello")})
-if err != nil {
-	// handle error
+## Authentication types
+
+`Config.AuthType` selects where the client obtains Kerberos credentials. All
+types require `KerberosConfigPath` (path to `krb5.conf`) and `ServiceName`
+(usually `kafka`).
+
+### `KRB5_USER_AUTH` — username and password
+
+Requires `Username`, `Password`, and `Realm`. The credentials are used to
+authenticate with the KDC.
+
+```go
+kerberos.Config{
+	AuthType:           kerberos.KRB5_USER_AUTH,
+	KerberosConfigPath: "/etc/krb5.conf",
+	ServiceName:        "kafka",
+	Username:           "alice",
+	Password:           os.Getenv("KRB5_PASSWORD"),
+	Realm:              "EXAMPLE.COM",
 }
 ```
 
-Create a keytab with `ktutil` (or ask your Kerberos admin):
+### `KRB5_KEYTAB_AUTH` — keytab
 
-```bash
-$ ktutil
-ktutil:  addent -password -p myapp@EXAMPLE.COM -k 1 -e aes256-cts-hmac-sha1-96
-ktutil:  wkt /opt/myapp/myapp.keytab
-ktutil:  quit
+Requires `KeyTabPath`, `Username`, and `Realm`. The keytab supplies the
+credential; a password is not needed.
+
+```go
+kerberos.Config{
+	AuthType:           kerberos.KRB5_KEYTAB_AUTH,
+	KerberosConfigPath: "/etc/krb5.conf",
+	KeyTabPath:         "/opt/myapp/myapp.keytab",
+	ServiceName:        "kafka",
+	Username:           "myapp",
+	Realm:              "EXAMPLE.COM",
+}
+```
+
+Create a keytab with `ktutil` or ask your Kerberos administrator:
+
+```text
+ktutil: addent -password -p myapp@EXAMPLE.COM -k 1 -e aes256-cts-hmac-sha1-96
+ktutil: wkt /opt/myapp/myapp.keytab
+ktutil: quit
 ```
 
 ### `KRB5_CCACHE_AUTH` — credential cache
 
-Credentials are read from an existing cache file, e.g. one created by `kinit`
-on the host (Linux default: `/tmp/krb5cc_<uid>`). Requires `CCachePath` only;
-principal and realm come from the cache.
-
-```go
-mechanism := &kerberos.Mechanism{
-	Config: kerberos.Config{
-		AuthType:           kerberos.KRB5_CCACHE_AUTH,
-		KerberosConfigPath: "/etc/krb5.conf",
-		CCachePath:         "/tmp/krb5cc_1000",
-		ServiceName:        "kafka",
-	},
-}
-
-reader := kafka.NewReader(kafka.ReaderConfig{
-	Brokers: []string{"broker1.example.com:9093"},
-	GroupID: "consumer-group",
-	Topic:   "events",
-	Dialer: &kafka.Dialer{
-		Timeout:       10 * time.Second,
-		DualStack:     true,
-		SASLMechanism: mechanism,
-		TLS:           &tls.Config{},
-	},
-})
-defer reader.Close()
-
-for {
-	msg, err := reader.ReadMessage(ctx)
-	if err != nil {
-		// handle error
-		break
-	}
-	fmt.Printf("key=%s value=%s\n", msg.Key, msg.Value)
-}
-```
-
-Populate the cache beforehand:
+Requires `CCachePath`. The principal and realm are read from the cache. For
+example, create a cache with `kinit`:
 
 ```bash
-kinit alice@EXAMPLE.COM              # default cache, e.g. /tmp/krb5cc_1000
-kinit -c /tmp/myapp.ccache alice@EXAMPLE.COM   # explicit cache path
+kinit alice@EXAMPLE.COM
+# Or specify a cache file:
+kinit -c /tmp/myapp.ccache alice@EXAMPLE.COM
 ```
 
-## Config reference
+Set `CCachePath` to the cache file, for example `/tmp/myapp.ccache`.
 
-| Field                | Description                                                        |
-| -------------------- | ------------------------------------------------------------------ |
-| `AuthType`           | `KRB5_USER_AUTH`, `KRB5_KEYTAB_AUTH` or `KRB5_CCACHE_AUTH`.        |
-| `KerberosConfigPath` | Path to `krb5.conf`. Required.                                     |
-| `ServiceName`        | Kerberos service name of the broker (e.g. `kafka`). Required.      |
-| `Username`           | Principal without realm. Required for user and keytab auth.        |
-| `Password`           | Required for user auth.                                            |
-| `Realm`              | Kerberos realm. Required for user and keytab auth.                 |
-| `KeyTabPath`         | Path to keytab file. Required for keytab auth.                     |
-| `CCachePath`         | Path to credential cache. Required for ccache auth.                |
-| `DisablePAFXFAST`    | Disable PA-FX-FAST negotiation; enable for very old KDCs.          |
-| `BuildSpn`           | Optional custom SPN builder; default is `serviceName/host`.        |
+## Custom service principal name
 
-## Custom SPN
-
-The service principal name defaults to `serviceName/host`, where `host` is the
-broker address (dial host, port stripped). Set `BuildSpn` when your principal
-uses a different convention, e.g. an explicit realm suffix:
+The service principal name defaults to `serviceName/host`; the broker port is
+removed from the host. Set `BuildSpn` if the broker uses a different format:
 
 ```go
 BuildSpn: func(serviceName, host string) string {
@@ -223,9 +139,24 @@ BuildSpn: func(serviceName, host string) string {
 },
 ```
 
-## Testing
+## Configuration reference
 
-The package tests are fully offline (no KDC required):
+| Field | Description |
+| --- | --- |
+| `AuthType` | `KRB5_USER_AUTH`, `KRB5_KEYTAB_AUTH`, or `KRB5_CCACHE_AUTH`. |
+| `KerberosConfigPath` | Path to `krb5.conf`. Required. |
+| `ServiceName` | Broker service name, usually `kafka`. Required. |
+| `Username` | Principal without realm. Required for user and keytab auth. |
+| `Password` | Password. Required for user auth. |
+| `Realm` | Kerberos realm. Required for user and keytab auth. |
+| `KeyTabPath` | Keytab path. Required for keytab auth. |
+| `CCachePath` | Credential-cache path. Required for ccache auth. |
+| `DisablePAFXFAST` | Disable PA-FX-FAST negotiation. |
+| `BuildSpn` | Optional function to customize the service principal name. |
+
+## Tests
+
+The package tests run offline and do not require a KDC:
 
 ```bash
 go test -race -cover ./...
