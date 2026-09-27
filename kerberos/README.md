@@ -154,6 +154,13 @@ BuildSpn: func(serviceName, host string) string {
 | `DisablePAFXFAST`    | Disable PA-FX-FAST negotiation.                              |
 | `BuildSpn`           | Optional function to customize the service principal name.   |
 
+`AuthType` must be one of the three listed values; an unset or unknown value
+returns an error. Authentication checks the SASL context before and between
+Kerberos operations. The underlying `gokrb5` KDC network calls do not accept a
+context and use their own socket timeouts, so cancellation cannot interrupt a
+KDC request already in progress and `Start` may return after the caller's
+deadline.
+
 ## Tests
 
 The package tests run offline and do not require a KDC:

@@ -88,6 +88,13 @@ func (Mechanism) Name() string {
 
 // Start begins the SASL authentication and returns the initial AP-REQ token.
 func (m *Mechanism) Start(ctx context.Context) (sasl.StateMachine, []byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, fmt.Errorf("kerberos authentication canceled: %w", err)
+	}
+	if m.Config.AuthType < KRB5_USER_AUTH || m.Config.AuthType > KRB5_CCACHE_AUTH {
+		return nil, nil, fmt.Errorf("unsupported kerberos auth type %d", m.Config.AuthType)
+	}
+
 	meta := sasl.MetadataFromContext(ctx)
 
 	host := ""
@@ -134,13 +141,25 @@ func (m *Mechanism) Start(ctx context.Context) (sasl.StateMachine, []byte, error
 	}
 
 	if err := krbClient.Login(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, nil, fmt.Errorf("kerberos login canceled: %w", ctxErr)
+		}
 		return nil, nil, fmt.Errorf("kerberos login: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, fmt.Errorf("kerberos login canceled: %w", err)
 	}
 
 	spn := m.spn(host)
 	ticket, encKey, err := krbClient.GetServiceTicket(spn)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, nil, fmt.Errorf("get service ticket canceled: %w", ctxErr)
+		}
 		return nil, nil, fmt.Errorf("get service ticket for %s: %w", spn, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, fmt.Errorf("get service ticket canceled: %w", err)
 	}
 
 	sess := &session{

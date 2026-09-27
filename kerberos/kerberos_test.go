@@ -142,11 +142,37 @@ func TestMechanism_Name(t *testing.T) {
 }
 
 func TestMechanism_Start_LoadConfigError(t *testing.T) {
-	m := &kerberos.Mechanism{Config: kerberos.Config{}}
+	m := &kerberos.Mechanism{Config: kerberos.Config{
+		AuthType: kerberos.KRB5_USER_AUTH,
+	}}
 	sess, token, err := m.Start(context.Background())
 	require.Nil(t, sess)
 	require.Nil(t, token)
 	require.ErrorContains(t, err, "load krb5 config")
+}
+
+func TestMechanism_Start_InvalidAuthType(t *testing.T) {
+	m := &kerberos.Mechanism{Config: kerberos.Config{
+		AuthType: 99,
+	}}
+
+	sess, token, err := m.Start(context.Background())
+	require.Nil(t, sess)
+	require.Nil(t, token)
+	require.ErrorContains(t, err, "unsupported kerberos auth type 99")
+}
+
+func TestMechanism_Start_CanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	m := &kerberos.Mechanism{Config: kerberos.Config{
+		AuthType: kerberos.KRB5_USER_AUTH,
+	}}
+	sess, token, err := m.Start(ctx)
+	require.Nil(t, sess)
+	require.Nil(t, token)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestMechanism_Start_MetadataHost(t *testing.T) {
