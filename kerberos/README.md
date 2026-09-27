@@ -141,18 +141,18 @@ BuildSpn: func(serviceName, host string) string {
 
 ## Configuration reference
 
-| Field | Description |
-| --- | --- |
-| `AuthType` | `KRB5_USER_AUTH`, `KRB5_KEYTAB_AUTH`, or `KRB5_CCACHE_AUTH`. |
-| `KerberosConfigPath` | Path to `krb5.conf`. Required. |
-| `ServiceName` | Broker service name, usually `kafka`. Required. |
-| `Username` | Principal without realm. Required for user and keytab auth. |
-| `Password` | Password. Required for user auth. |
-| `Realm` | Kerberos realm. Required for user and keytab auth. |
-| `KeyTabPath` | Keytab path. Required for keytab auth. |
-| `CCachePath` | Credential-cache path. Required for ccache auth. |
-| `DisablePAFXFAST` | Disable PA-FX-FAST negotiation. |
-| `BuildSpn` | Optional function to customize the service principal name. |
+| Field                | Description                                                  |
+|----------------------|--------------------------------------------------------------|
+| `AuthType`           | `KRB5_USER_AUTH`, `KRB5_KEYTAB_AUTH`, or `KRB5_CCACHE_AUTH`. |
+| `KerberosConfigPath` | Path to `krb5.conf`. Required.                               |
+| `ServiceName`        | Broker service name, usually `kafka`. Required.              |
+| `Username`           | Principal without realm. Required for user and keytab auth.  |
+| `Password`           | Password. Required for user auth.                            |
+| `Realm`              | Kerberos realm. Required for user and keytab auth.           |
+| `KeyTabPath`         | Keytab path. Required for keytab auth.                       |
+| `CCachePath`         | Credential-cache path. Required for ccache auth.             |
+| `DisablePAFXFAST`    | Disable PA-FX-FAST negotiation.                              |
+| `BuildSpn`           | Optional function to customize the service principal name.   |
 
 ## Tests
 
